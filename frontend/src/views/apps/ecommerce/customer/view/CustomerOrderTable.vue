@@ -1,0 +1,189 @@
+<script setup lang="ts">
+import type { Order } from "@db/apps/ecommerce/types";
+
+const searchQuery = ref("");
+
+// Tuỳ chọn bảng dữ liệu
+const itemsPerPage = ref(10);
+const page = ref(1);
+const sortBy = ref();
+const orderBy = ref();
+
+const updateOptions = (options: any) => {
+  page.value = options.page;
+  sortBy.value = options.sortBy[0]?.key;
+  orderBy.value = options.sortBy[0]?.order;
+};
+
+const headers = [
+  { title: "Đơn hàng", key: "order" },
+  { title: "Ngày", key: "date" },
+  { title: "Trạng thái", key: "status" },
+  { title: "Chi phí", key: "spent" },
+  { title: "Hành động", key: "actions", sortable: false },
+];
+
+const resolveStatus = (status: string) => {
+  if (status === "Delivered") return { text: "Đã Giao Hàng", color: "success" };
+  if (status === "Out for Delivery")
+    return { text: "Đang Giao Hàng", color: "primary" };
+  if (status === "Ready to Pickup")
+    return { text: "Sẵn Sàng Để Lấy", color: "info" };
+  if (status === "Dispatched") return { text: "Đã Xuất Kho", color: "warning" };
+};
+
+const { data: ordersData, execute: fetchOrders } = await useApi<any>(
+  createUrl("/apps/ecommerce/orders", {
+    query: {
+      q: searchQuery,
+      page,
+      itemsPerPage,
+      sortBy,
+      orderBy,
+    },
+  })
+);
+
+const orders = computed((): Order[] => ordersData.value?.orders || []);
+const totalOrder = computed(() => ordersData.value?.total || 0);
+
+const deleteOrder = async (id: number) => {
+  await $api(`/apps/ecommerce/orders/${id}`, {
+    method: "DELETE",
+  });
+  fetchOrders();
+};
+</script>
+
+<template>
+  <VCard>
+    <VCardText>
+      <div
+        class="d-flex align-center justify-sm-space-between justify-start flex-wrap gap-4"
+      >
+        <div class="text-h5">Các đơn hàng đã đặt</div>
+        <VTextField
+          v-model="searchQuery"
+          placeholder="Tìm kiếm Đơn hàng"
+          density="compact"
+          style="max-inline-size: 250px; min-inline-size: 200px"
+        />
+      </div>
+    </VCardText>
+    <VDataTableServer
+      v-model:items-per-page="itemsPerPage"
+      v-model:page="page"
+      :headers="headers"
+      :items="orders"
+      item-value="id"
+      :items-length="totalOrder"
+      class="text-no-wrap rounded-0"
+      @update:options="updateOptions"
+    >
+      <!-- Đơn hàng ID -->
+      <template #item.order="{ item }">
+        <RouterLink
+          :to="{
+            name: 'apps-ecommerce-order-details-id',
+            params: { id: item.order },
+          }"
+        >
+          #{{ item.order }}
+        </RouterLink>
+      </template>
+
+      <!-- Ngày -->
+      <template #item.date="{ item }">
+        {{ new Date(item.date).toDateString() }}
+      </template>
+
+      <!-- Trạng thái -->
+      <template #item.status="{ item }">
+        <VChip size="small" :color="resolveStatus(item.status)?.color">
+          {{
+            resolveStatus(item.status)?.text
+              ? resolveStatus(item.status)?.text
+              : item.status
+          }}
+        </VChip>
+      </template>
+
+      <!-- Chi phí -->
+      <template #item.spent="{ item }"> ${{ item.spent }} </template>
+
+      <!-- Hành động -->
+      <template #item.actions="{ item }">
+        <IconBtn size="small">
+          <VIcon icon="ri-more-2-fill" />
+          <VMenu activator="parent">
+            <VList>
+              <VListItem value="view">
+                <RouterLink
+                  :to="{
+                    name: 'apps-ecommerce-order-details-id',
+                    params: { id: item.order },
+                  }"
+                  class="text-high-emphasis"
+                >
+                  Xem
+                </RouterLink>
+              </VListItem>
+              <VListItem value="delete" @click="deleteOrder(item.id)">
+                Xóa
+              </VListItem>
+            </VList>
+          </VMenu>
+        </IconBtn>
+      </template>
+
+      <!-- Phân trang -->
+      <template #bottom>
+        <VDivider />
+
+        <div class="d-flex justify-end flex-wrap gap-x-6 px-2 py-1">
+          <div
+            class="d-flex align-center gap-x-2 text-medium-emphasis text-base"
+          >
+            Số hàng mỗi trang:
+            <VSelect
+              v-model="itemsPerPage"
+              class="per-page-select"
+              variant="plain"
+              :items="[10, 20, 25, 50, 100]"
+            />
+          </div>
+
+          <p class="d-flex align-center text-base text-high-emphasis me-2 mb-0">
+            {{ paginationMeta({ page, itemsPerPage }, totalOrder) }}
+          </p>
+
+          <div class="d-flex gap-x-2 align-center me-2">
+            <VBtn
+              class="flip-in-rtl"
+              icon="ri-arrow-left-s-line"
+              variant="text"
+              density="comfortable"
+              color="high-emphasis"
+              :disabled="page <= 1"
+              @click="page <= 1 ? (page = 1) : page--"
+            />
+
+            <VBtn
+              class="flip-in-rtl"
+              icon="ri-arrow-right-s-line"
+              density="comfortable"
+              variant="text"
+              color="high-emphasis"
+              :disabled="page >= Math.ceil(totalOrder / itemsPerPage)"
+              @click="
+                page >= Math.ceil(totalOrder / itemsPerPage)
+                  ? (page = Math.ceil(totalOrder / itemsPerPage))
+                  : page++
+              "
+            />
+          </div>
+        </div>
+      </template>
+    </VDataTableServer>
+  </VCard>
+</template>
